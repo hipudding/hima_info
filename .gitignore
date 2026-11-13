@@ -1,0 +1,12 @@
+# 运行时会话与锁文件（session.json 含 token，绝对不能提交）
+session.json
+session.lock
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.env
+
+# macOS
+.DS_Store
