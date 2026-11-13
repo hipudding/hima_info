@@ -301,7 +301,8 @@ user/refresh
 ```text
 车辆 <车牌>  VIN <VIN>  vehicleId ****
 里程 <km>  速度 <km/h>  档位 <文字> (<数字>)
-电池 SOC <百分比>%  续航 <km>  充电 <状态>  充电功率 <kW>
+电池 SOC <百分比>%  续航 <km>
+充电 状态 <状态> (<数字>)  电流 <A>  电压 <V>  功率 <kW>  剩余 <分钟/小时>
 位置 <经度>,<纬度>  海拔 <m>  方向 <度>  卫星 <数量>
 胎压 左前 <bar> 右前 <bar> 左后 <bar> 右后 <bar>
 门窗 中控锁 <状态>  后备箱 <状态>  充电口盖 <状态>  前舱盖 <状态>
@@ -315,12 +316,18 @@ user/refresh
 |---|---|
 | `vehicleStatus.gearSignal` | `0=N`、`13=R`、`14=D`、`15=P`，其他显示原值 |
 | `vehicleStatus.sumRemainingMileage` | 表显剩余续航；缺失时用 `charge.vcuSumRemainingMileage` |
-| `charge.chargeStatus` | `0/2=未充电`、`1=充电中` |
+| `charge.acChargeStatus` / `dcChargeStatus` | 取较大值：`0=未充电`、`1=准备充电`、`5=充电异常`、`6=充电中`、`7=充电结束`、`18=充电中（绝缘检测）`、`25=预约充电`；已插枪但状态为 0 时显示“已连接未充电” |
+| `charge.dcChargeCurrent` / `acChargeCurrent` / `chargeCurrent` | 充电电流，优先取正在充电的一侧，单位 A |
+| `charge.chargeVoltage` | 充电电压，单位 V |
+| `charge.chargePower` | 充电功率，单位 kW；该字段为 0 时按 `chargeVoltage × 电流 / 1000` 计算 |
+| `charge.remainChargeTime` | 剩余充电时间，单位分钟；小于 60 显示分钟，超过 60 显示小时/分钟 |
 | `door.centerLock` | `0=锁闭`、`1=开锁` |
 | `door.trunk` / `chargeHood` / `frondHood` | `0=关闭`、`1=打开` |
 | `hvac.acStatus` | `0=关闭`、`1=打开` |
 | 温度 | 原始值除以 10，单位 °C |
 | 胎压 | 原始压力，单位 bar |
+
+部分车型直流充电时，服务端返回的 `charge.chargeStatus` 仍为 `0`、`chargePower` 仍为 `0.0`，因此摘要不使用这两个字段，而是以 `dcChargeStatus`/`acChargeStatus` 判断状态，并用电压 × 电流计算实际功率。
 
 车辆离线或休眠时，很多字段是默认值（例如 SOC 可能是 `-1`），摘要会按原值显示。
 

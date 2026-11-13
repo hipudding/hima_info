@@ -903,9 +903,67 @@ def print_summary(vehicle: dict, data: dict) -> None:
         remaining = charge.get("vcuSumRemainingMileage")
     remaining_text = "-" if remaining is None else remaining
 
-    charge_text = labeled(charge.get("chargeStatus"), {0: "未充电", 1: "充电中", 2: "未充电"})
-    print(f"电池 SOC {g(vs, 'soc')}%  续航 {remaining_text} km  "
-          f"充电 {charge_text}  充电功率 {g(charge, 'chargePower')} kW")
+    def charge_number(key):
+        try:
+            return float(charge.get(key))
+        except (TypeError, ValueError):
+            return None
+
+    def charge_int(key):
+        try:
+            return int(charge.get(key))
+        except (TypeError, ValueError):
+            return 0
+
+    ac_status = charge_int("acChargeStatus")
+    dc_status = charge_int("dcChargeStatus")
+    status = max(ac_status, dc_status)
+    gun = max(charge_int("chargeConStatus"), charge_int("dcChargeGunConnectStatus"))
+    status_labels = {
+        0: "未充电", 1: "准备充电", 5: "充电异常", 6: "充电中",
+        7: "充电结束", 18: "充电中（绝缘检测）", 25: "预约充电",
+    }
+    status_text = status_labels.get(status, "未知")
+    if status == 0 and gun not in (0, 1, -1):
+        status_text = "已连接未充电"
+
+    dc_current = charge_number("dcChargeCurrent")
+    ac_current = charge_number("acChargeCurrent")
+    current = charge_number("chargeCurrent")
+    if dc_current is not None and dc_current > 0:
+        current = dc_current
+    elif ac_current is not None and ac_current > 0:
+        current = ac_current
+    elif dc_status in (6, 18, 25) and dc_current is not None:
+        current = dc_current
+    elif ac_status in (6, 18, 25) and ac_current is not None:
+        current = ac_current
+
+    voltage = charge_number("chargeVoltage")
+    power = charge_number("chargePower")
+    if (power is None or power <= 0) and voltage and current and current > 0:
+        power = voltage * current / 1000
+
+    def charge_unit(value, unit):
+        return "-" if value is None else f"{value:.1f} {unit}"
+
+    remain = charge_number("remainChargeTime")
+    if remain is None or remain <= 0:
+        remain_text = "-"
+    else:
+        minutes = int(remain)
+        if minutes > 1440:
+            remain_text = "24+ 小时"
+        elif minutes < 60:
+            remain_text = f"{minutes} 分钟"
+        else:
+            hours, minutes = divmod(minutes, 60)
+            remain_text = f"{hours} 小时" + (f" {minutes} 分钟" if minutes else "")
+
+    print(f"电池 SOC {g(vs, 'soc')}%  续航 {remaining_text} km")
+    print(f"充电 状态 {status_text} ({status})  电流 {charge_unit(current, 'A')}  "
+          f"电压 {charge_unit(voltage, 'V')}  功率 {charge_unit(power, 'kW')}  "
+          f"剩余 {remain_text}")
     print(f"位置 {g(loc, 'longitude')},{g(loc, 'latitude')}  海拔 {g(location, 'altitude')} m  "
           f"方向 {g(location, 'direction')}°  卫星 {g(location, 'sateliteNum')}")
     tires = "  ".join(
