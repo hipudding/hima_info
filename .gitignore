@@ -1,6 +1,8 @@
-# 运行时会话与锁文件（session.json 含 token，绝对不能提交）
+# 运行时会话与锁文件（session.json / bundle 含 token，绝对不能提交）
 session.json
 session.lock
+hima_bundle*.txt
+hima_bundle*.json
 
 # Python
 __pycache__/

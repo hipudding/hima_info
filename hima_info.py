@@ -5,6 +5,7 @@ HIMA Info — 鸿蒙智行车辆数据工具（只读）。
 from __future__ import annotations
 
 import argparse
+import base64
 import fcntl
 import hashlib
 import json
@@ -1009,6 +1010,83 @@ def cmd_info(args) -> None:
     print_summary(vehicle, data)
 
 
+def _pick(mapping: dict, *keys):
+    for key in keys:
+        value = mapping.get(key)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _compact(mapping: dict) -> dict:
+    return {key: value for key, value in mapping.items() if value not in (None, "")}
+
+
+def build_bundle(state: dict, account: dict, vehicle: dict) -> dict:
+    """生成 TeslaMate HIMA 凭据包（v1 分组结构）。"""
+    vehicle_id = _pick(vehicle, "vehicleId", "id")
+    vin = _pick(vehicle, "vin")
+    if vehicle_id is None or not vin:
+        raise SystemExit("车辆信息缺少 vehicleId/vin，无法生成凭据包")
+
+    return {
+        "version": 1,
+        "vehicle": _compact({
+            "id": vehicle_id,
+            "idStr": _pick(vehicle, "vehicleIdStr", "idStr"),
+            "vin": vin,
+            "plateNo": _pick(vehicle, "plateNo"),
+            "name": _pick(vehicle, "vehicleName", "name"),
+            "aliasName": _pick(vehicle, "vehicleAliasName", "aliasName"),
+            "model": _pick(vehicle, "model"),
+            "modelName": _pick(vehicle, "modelName"),
+            "projectName": _pick(vehicle, "projectName", "marketingName"),
+            "colorName": _pick(vehicle, "colorName"),
+            "brandName": _pick(vehicle, "brandName"),
+            "trimBadging": _pick(vehicle, "trimBadging"),
+            "wheelType": _pick(vehicle, "wheelType"),
+            "efficiency": _pick(vehicle, "efficiency", "avgEgyCnse"),
+        }),
+        "account": _compact({
+            "enterpriseCode": _pick(account, "enterpriseCode"),
+            "accountId": _pick(account, "accountId"),
+            "vehicleAccessToken": _pick(account, "vehicleAccessToken"),
+            "vehicleTokenExpiresAt": _pick(account, "vehicleTokenExpiresAt"),
+        }),
+        "session": _compact({
+            "sessionKey": _pick(state, "sessionKey"),
+            "userId": _pick(state, "userId"),
+            "userAccessToken": _pick(state, "userAccessToken"),
+            "userRefreshToken": _pick(state, "userRefreshToken"),
+            "deviceId": _pick(state, "deviceId"),
+            "deviceModel": _pick(state, "deviceModel"),
+        }),
+    }
+
+
+def cmd_bundle(args) -> None:
+    state = _load_or_die()
+    state, account, vehicle = _select_vehicle(state, args.vehicle_id, args.index)
+    payload = build_bundle(state, account, vehicle)
+
+    if args.format == "json":
+        text = json.dumps(payload, ensure_ascii=False, indent=2)
+    else:
+        raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        text = base64.b64encode(raw.encode("utf-8")).decode("ascii")
+
+    if args.output:
+        path = Path(args.output).expanduser()
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text + "\n")
+        os.chmod(path, 0o600)
+        print(f"✓ 凭据包已写入 {path.resolve()}（0600，{args.format}）")
+        print("  在 TeslaMate 登录页粘贴到 Access Token，Refresh Token 填 HIMA")
+    else:
+        print(text)
+
+
 def _pad(text: str, width: int) -> str:
     """按终端显示宽度补空格（中文算 2 列）。"""
     display = sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in text)
@@ -1027,11 +1105,15 @@ HELP = "\n".join([
     "  " + _pad("refresh", 14) + _pad("r", 9) + "刷新用户会话和车辆 token",
     "  " + _pad("vehicles", 14) + _pad("v", 9) + "车辆列表（带序号）",
     "  " + _pad("info", 14) + _pad("i", 9) + "实时车辆信息（默认第一辆车）",
+    "  " + _pad("bundle", 14) + _pad("b", 9) + "导出 TeslaMate 凭据包（默认打印）",
     "",
     "示例:",
     f"  python3 {PROG} info",
     f"  python3 {PROG} info 2",
     f"  python3 {PROG} info 2 --full",
+    f"  python3 {PROG} bundle",
+    f"  python3 {PROG} bundle 2",
+    f"  python3 {PROG} bundle | pbcopy",
     f"  python3 {PROG} refresh --session-only",
     f"  python3 {PROG} login --url",
     "",
@@ -1083,6 +1165,16 @@ def main() -> None:
     p_info.add_argument("--full", action="store_true",
                         help="获取全部只读数据并输出 JSON（车辆/账号/状态/保养/预约/SIM/行车记录/围栏）")
     p_info.set_defaults(func=cmd_info)
+
+    p_bundle = sub.add_parser("bundle", aliases=["b"], help="导出 TeslaMate 凭据包")
+    p_bundle.add_argument("index", nargs="?", type=int, metavar="序号",
+                          help="vehicles 列表中的序号，默认第一辆车")
+    p_bundle.add_argument("--vehicle-id", metavar="ID", help="指定 vehicleId")
+    p_bundle.add_argument("--output", metavar="文件",
+                          help="写入文件（权限 0600）；默认直接打印到 stdout")
+    p_bundle.add_argument("--format", choices=("base64", "json"), default="base64",
+                          help="base64（默认，适合单行输入框）或 json")
+    p_bundle.set_defaults(func=cmd_bundle)
 
     args = parser.parse_args()
     if not args.cmd:

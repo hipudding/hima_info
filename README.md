@@ -147,6 +147,25 @@ python hima_info.py info 2 --full           # 全部只读数据（JSON）
 
 `info` 默认输出人可读摘要；`--full` 输出全部只读区块的 JSON。`--full` 是唯一的 JSON 输出模式，没有单独的 `--json` 参数。
 
+### `bundle`
+
+导出 TeslaMate 登录页需要的 HIMA 凭据包：
+
+```bash
+python hima_info.py bundle
+# 默认直接打印第一辆车的 base64 凭据包
+
+python hima_info.py bundle | pbcopy        # 直接复制到剪贴板
+python hima_info.py bundle 2               # 第二辆车
+python hima_info.py bundle --vehicle-id ID
+python hima_info.py bundle --format json   # 明文 JSON
+python hima_info.py bundle --output hima_bundle.txt  # 可选：写 0600 文件
+```
+
+默认输出 base64 单行，直接粘贴到 TeslaMate 登录页的 **Access Token**；**Refresh Token** 填 `HIMA`。
+
+输出含车辆 token 和用户 token，**不要提交、录屏或分享**；`--output` 生成的文件已在 `.gitignore` 中。
+
 ## 登录逻辑
 
 ### 1. 生成授权 URL
